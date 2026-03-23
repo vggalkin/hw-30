@@ -221,37 +221,52 @@ pipeline {
     // Глобальная обработка пост-условий
     post {
         always {
-            // Очистка рабочего пространства
-            cleanWs(when: [buildResult: 'SUCCESS'])
-            
-            // Логирование результата
+            // Логирование результата — выполняется всегда
             echo "📊 Сборка #${env.BUILD_NUMBER} завершена: ${currentBuild.currentResult}"
-        }
         
+            // Архивация критичных логов для отладки
+            archiveArtifacts artifacts: '**/*.log', allowEmptyArchive: true, fingerprint: true
+        }
+    
         success {
-            // Уведомление об успехе
+            // Очистка только при успехе
+            script {
+                echo "✅ Сборка успешна — очищаем рабочее пространство"
+                cleanWs(
+                    deleteDirs: true,
+                    notFailBuild: true,
+                    cleanWhenAbsent: false
+                )
+            }
+        
+             // Уведомление для продакшена
             script {
                 if (params.ENVIRONMENT == 'prod') {
-                    // Отправка уведомления (пример)
                     echo "🎉 Продакшен-деплой версии ${params.APP_VERSION} успешен!"
+                    // slackSend channel: '#deployments', message: "✅ Deployed ${params.APP_VERSION}"
                 }
             }
         }
-        
+    
         failure {
-            // Обработка ошибок [[21]][[22]]
+            // При ошибке НЕ очищаем workspace — сохраняем для отладки
+            echo "❌ Сборка не удалась — workspace сохранён для анализа"
+        
             script {
-                echo "❌ Критическая ошибка в пайплайне!"
-                // Сохранение логов для отладки
-                archiveArtifacts artifacts: '**/*.log', allowEmptyArchive: true
-                
-                // Пример отправки алерта
-                // slackSend channel: '#alerts', message: "Build failed: ${env.JOB_NAME}"
+                // Сохраняем дополнительные диагностические данные
+                sh 'docker logs ${APP_NAME}-latest --tail 100 > docker-error.log 2>&1 || true'
+                archiveArtifacts artifacts: 'docker-error.log', allowEmptyArchive: true
             }
         }
-        
+    
         unstable {
-            echo "⚠️ Сборка завершена с предупреждениями"
+            echo "⚠️ Сборка завершена с предупреждениями (например, упали тесты)"
+            // Можно отправить уведомление команде
+        }
+    
+        changed {
+            // Уведомление только если статус сборки изменился
+            echo "🔄 Статус сборки изменился: ${currentBuild.previousBuild?.result} → ${currentBuild.currentResult}"
         }
     }
 }
