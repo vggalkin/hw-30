@@ -57,7 +57,7 @@ pipeline {
         stage('Deploy') {
             // 6. Условие: только для ветки main и окружения prod
             when {
-                branch 'master'
+                //branch 'master'
                 expression { return params.DEPLOY_ENV == 'prod' }
             }
             steps {
